@@ -1,0 +1,9 @@
+conda create -n gp2 python=3.11
+conda activate gp2
+pip install numpy
+python -V
+pip install libigl
+conda install meshplot
+pip install scipy
+pip install notebook
+jupyter notebook
