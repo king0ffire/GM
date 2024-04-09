@@ -1,7 +1,7 @@
 import math
 import numpy as np
 import scipy.sparse as sp
-
+#np.set_printoptions(threshold=np.inf)
 import igl
 import meshplot as mp
 mp.offline()
@@ -118,7 +118,6 @@ def align_field_Q(V, F, TT, soft_id, soft_value, llambda):
     ii = []
     jj = []
 
-    index = 0
     for f in range(F.shape[0]):
         for ei in range(3):  # Loop over the edges
 
@@ -143,31 +142,27 @@ def align_field_Q(V, F, TT, soft_id, soft_value, llambda):
 
             # Add the term conj(f)^n*ui - conj(g)^n*uj to the energy matrix
             data.append(np.dot(ef,ef.conjugate()))
-            ii.append(index)
+            ii.append(f)
             jj.append(f)
 
             data.append(np.dot(ef.conjugate(),-eg))
-            ii.append(index)
+            ii.append(f)
             jj.append(g)
 
-            index += 1
-
             data.append(np.dot(-ef, eg.conjugate()))
-            ii.append(index)
+            ii.append(g)
             jj.append(f)
 
             data.append(np.dot(eg.conjugate(), eg))
-            ii.append(index)
+            ii.append(g)
             jj.append(g)
 
-            index += 1
-
-    sqrtl = sqrt(llambda)
 
     # Convert the constraints into the complex polynomial coefficients and add them as soft constraints
+    Q = sp.coo_matrix((data, (ii, jj)), shape=(F.shape[0], F.shape[0])).asformat("lil")
 
     # Rhs of the system
-    b = np.zeros(index + soft_id.shape[0], dtype=complex)
+    b = np.zeros(F.shape[0], dtype=complex)
 
     for ci in range(soft_id.shape[0]):
         f = soft_id[ci]
@@ -176,22 +171,31 @@ def align_field_Q(V, F, TT, soft_id, soft_value, llambda):
         # Project on the local frame
         c = np.dot(v, T1[f, :]) + np.dot(v, T2[f, :]) * 1j
 
-        data.append(sqrtl);
-        ii.append(index);
-        jj.append(f)
-        b[index] = c * sqrtl
+        for fj in range(F.shape[0]):
+            b[fj] -= np.dot(Q[fj,f],c)
 
-        index += 1
 
-    assert (b.shape[0] == index)
+
+
+    for ci in range(soft_id.shape[0]):
+        f = soft_id[ci]
+        v = soft_value[ci, :]
+        # Project on the local frame
+        c = np.dot(v, T1[f, :]) + np.dot(v, T2[f, :]) * 1j
+        Q[f,:]=0
+        Q[f,f]=1
+        b[f]=c
+
+    #assert (b.shape[0] == index)
 
     # Solve the linear system
-    A = sp.coo_matrix((data, (ii, jj)), shape=(index, F.shape[0])).asformat("csr")
-    u = sp.linalg.spsolve(A.H @ A, A.H @ b)
+    A = Q.asformat("csr")
+    u = sp.linalg.spsolve(A, b)
 
     R = T1 * u.real[:, None] + T2 * u.imag[:, None]
 
     return R
+
 
 def plot_mesh_field(V, F, R, constrain_faces):
     # Highlight in red the constrained faces
@@ -210,5 +214,5 @@ def plot_mesh_field(V, F, R, constrain_faces):
     return p
 
 
-R = align_field(v, f, tt, cf, c, 1e6)
-plot_mesh_field(v, f, R, cf)
+R = align_field_Q(v, f, tt, cf, c, 1e6)
+print(R)
